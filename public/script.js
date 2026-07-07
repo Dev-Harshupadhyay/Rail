@@ -1,38 +1,75 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const cors = require('cors');
-require('dotenv').config();
+// script.js
 
-const app = express();
-app.use(cors());
-
-// RapidAPI Config
-const RAPID_API_KEY = process.env.RAPID_API_KEY; 
-const RAPID_API_HOST = 'irctc1.p.rapidapi.com';
-
-// Dynamic Proxy Route
-app.get('/api/proxy/:version/:endpoint', async (req, res) => {
-    const { version, endpoint } = req.params;
-    // URL ke saare query parameters (jaise trainNo, query, etc.) ko forward karo
-    const queryParams = new URLSearchParams(req.query).toString();
-    const url = `https://${RAPID_API_HOST}/api/${version}/${endpoint}?${queryParams}`;
-
+// 1. Common function to handle all API calls
+async function callRailKit(version, endpoint, params) {
+    const statusMsg = document.querySelector(`[data-status="${endpoint}"]`) || document.querySelector('.status-msg');
+    const resultDiv = document.querySelector(`[data-result="${endpoint}"]`) || document.getElementById('result');
+    
+    // Convert params object to query string
+    const queryString = new URLSearchParams(params).toString();
+    
+    statusMsg.innerText = "Fetching...";
+    
     try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'x-rapidapi-key': RAPID_API_KEY,
-                'x-rapidapi-host': RAPID_API_HOST,
-                'Content-Type': 'application/json'
-            }
-        });
+        // Dynamic call to our server.js proxy
+        const res = await fetch(`/api/proxy/${version}/${endpoint}?${queryString}`);
+        const data = await res.json();
         
-        const data = await response.json();
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: "Proxy call failed" });
+        statusMsg.innerText = "Success";
+        resultDiv.classList.add('show');
+        // Beautify output
+        resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+    } catch (e) {
+        statusMsg.innerText = "Error: Check Console";
+        console.error(e);
     }
-});
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`RailKit Server running on port ${PORT}`));
+// 2. Button Event Listeners
+document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.onclick = () => {
+        const action = btn.getAttribute('data-action');
+        
+        // Mapping buttons to their specific API requirements
+        switch(action) {
+            case 'pnr':
+                callRailKit('v3', 'getPNRStatus', { pnrNumber: document.getElementById('pnr-input').value });
+                break;
+            case 'train':
+                callRailKit('v1', 'getTrainSchedule', { trainNo: document.getElementById('train-input').value });
+                break;
+            case 'track':
+                callRailKit('v1', 'liveTrainStatus', { 
+                    trainNo: document.getElementById('track-train').value, 
+                    startDay: 1 
+                });
+                break;
+            case 'station':
+                callRailKit('v3', 'getLiveStation', { hours: document.getElementById('station-hrs').value });
+                break;
+            case 'search':
+                callRailKit('v3', 'trainBetweenStations', { 
+                    fromStationCode: document.getElementById('search-from').value, 
+                    toStationCode: document.getElementById('search-to').value 
+                });
+                break;
+            case 'seat':
+                callRailKit('v1', 'checkSeatAvailability', { 
+                    trainNo: document.getElementById('seat-train').value,
+                    fromStationCode: document.getElementById('seat-from').value,
+                    toStationCode: document.getElementById('seat-to').value,
+                    classType: document.getElementById('seat-class').value,
+                    quota: document.getElementById('seat-quota').value
+                });
+                break;
+            case 'fare':
+                callRailKit('v2', 'getFare', { 
+                    trainNo: document.getElementById('fare-train').value,
+                    fromStationCode: document.getElementById('fare-from').value,
+                    toStationCode: document.getElementById('fare-to').value
+                });
+                break;
+        }
+    };
+});
+        
