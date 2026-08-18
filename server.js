@@ -1,49 +1,69 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const cors = require('cors');
-const path = require('path');
 require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
-// 1. Serve static files from 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
+const API_HOST = process.env.RAPIDAPI_HOST;
+const API_KEY = process.env.RAPIDAPI_KEY;
 
-// 2. Root route to serve your index.html
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+const rapidHeaders = {
+  'Content-Type': 'application/json',
+  'x-rapidapi-host': API_HOST,
+  'x-rapidapi-key': API_KEY
+};
+
+// Helper function - repeat code kam karne ke liye
+async function callIrctc(path, params, res) {
+  try {
+    const response = await axios.get(`https://${API_HOST}${path}`, {
+      headers: rapidHeaders,
+      params
+    });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({
+      error: 'API call failed',
+      details: err.response?.data || err.message
+    });
+  }
+}
+
+// 1. Search Train (by number/name)
+app.get('/api/search-train', (req, res) => {
+  callIrctc('/api/v1/searchTrain', { query: req.query.query }, res);
 });
 
-// 3. Dynamic Proxy Route for RapidAPI
-app.get('/api/proxy/:version/:endpoint', async (req, res) => {
-    const { version, endpoint } = req.params;
-    const queryParams = new URLSearchParams(req.query).toString();
-    
-    // Use env variables
-    const RAPID_API_KEY = process.env.RAPID_API_KEY;
-    const RAPID_API_HOST = process.env.RAPID_API_HOST;
+// 2. Trains Between Stations
+app.get('/api/trains-between', (req, res) => {
+  const { fromStationCode, toStationCode } = req.query;
+  callIrctc('/api/v3/trainBetweenStations', { fromStationCode, toStationCode }, res);
+});
 
-    const url = `https://${RAPID_API_HOST}/api/${version}/${endpoint}?${queryParams}`;
+// 3. Live Train Status
+app.get('/api/live-status', (req, res) => {
+  const { trainNo, startDay } = req.query;
+  callIrctc('/api/v1/liveTrainStatus', { trainNo, startDay: startDay || 1 }, res);
+});
 
-    try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'x-rapidapi-key': RAPID_API_KEY,
-                'x-rapidapi-host': RAPID_API_HOST,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        res.json(data);
-    } catch (err) {
-        console.error("Proxy Error:", err);
-        res.status(500).json({ error: "Failed to connect to RailKit API" });
-    }
+// 4. PNR Status
+app.get('/api/pnr-status', (req, res) => {
+  callIrctc('/api/v3/getPNRStatus', { pnrNumber: req.query.pnrNumber }, res);
+});
+
+// 5. Train Classes (available seat classes)
+app.get('/api/train-classes', (req, res) => {
+  callIrctc('/api/v1/getTrainClasses', { trainNo: req.query.trainNo }, res);
+});
+
+// 6. Trains by Station
+app.get('/api/trains-by-station', (req, res) => {
+  callIrctc('/api/v3/getTrainsByStation', { stationCode: req.query.stationCode }, res);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`RailKit Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server chal raha hai: http://localhost:${PORT}`));
