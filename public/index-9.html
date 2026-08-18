@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Railkit — Indian Railway Tools</title>
+<meta name="description" content="Railkit — live PNR status, train info, fare and station lookups for Indian Railways." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+        colors: {
+          signal: {
+            emerald: '#22e0a0',
+            indigo: '#6d7bff',
+            amber: '#ffb545',
+            red: '#ff5c72',
+          }
+        },
+        boxShadow: {
+          glow: '0 0 0 1px rgba(109,123,255,0.25), 0 8px 30px -8px rgba(109,123,255,0.35)',
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  /* ============ THEME TOKENS ============
+     Default (no class) = dark. html.light overrides for light mode. */
+  :root {
+    --bg: #08090c;
+    --bg-elev1: #0d0f14;
+    --bg-elev3: #181c25;
+    --border: #242832;
+    --border-strong: #343a47;
+    --text-heading: #ffffff;
+    --text-body: #a5abb9;
+    --text-muted: #7b8497;
+    --text-faint: #525a6b;
+    --card-bg: rgba(13,15,20,0.6);
+    --card-bg-strong: rgba(13,15,20,0.7);
+    --header-bg: rgba(8,9,12,0.82);
+    --section-tint: rgba(13,15,20,0.4);
+    --badge-bg: rgba(13,15,20,0.85);
+    --input-bg: #08090c;
+    --drawer-bg: #0d0f14;
+    --scrollbar-track: #0d0f14;
+    --scrollbar-thumb: #242832;
+    --overlay: rgba(0,0,0,0.6);
+  }
+  html.light {
+    --bg: #F7F8FA;
+    --bg-elev1: #FFFFFF;
+    --bg-elev3: #ECEDF1;
+    --border: #E2E4E9;
+    --border-strong: #CBCED6;
+    --text-heading: #0E1015;
+    --text-body: #3C4150;
+    --text-muted: #6B7280;
+    --text-faint: #8B90A0;
+    --card-bg: rgba(255,255,255,0.85);
+    --card-bg-strong: rgba(255,255,255,0.95);
+    --header-bg: rgba(255,255,255,0.85);
+    --section-tint: rgba(236,237,241,0.6);
+    --badge-bg: rgba(255,255,255,0.9);
+    --input-bg: #FFFFFF;
+    --drawer-bg: #FFFFFF;
+    --scrollbar-track: #F1F2F5;
+    --scrollbar-thumb: #D3D6DD;
+    --overlay: rgba(0,0,0,0.35);
+  }
+
+  body { font-family: 'Space Grotesk', sans-serif; background: var(--bg); color: var(--text-body); transition: background .25s ease, color .25s ease; }
+  .font-mono-board { font-family: 'JetBrains Mono', monospace; }
+
+  .rail-divider { height: 6px; background-image: repeating-linear-gradient(90deg, var(--border-strong) 0, var(--border-strong) 10px, transparent 10px, transparent 20px); }
+
+  @keyframes flap { 0% { transform: rotateX(0deg); opacity: 1; } 45% { transform: rotateX(90deg); opacity: .3; } 55% { transform: rotateX(-90deg); opacity: .3; } 100% { transform: rotateX(0deg); opacity: 1; } }
+  .flap-char { display: inline-block; animation: flap .5s ease; }
+
+  #mobileDrawer { transform: translateX(100%); transition: transform .35s cubic-bezier(.4,0,.2,1); background: var(--drawer-bg); }
+  #mobileDrawer.open { transform: translateX(0%); }
+  #drawerOverlay { opacity: 0; pointer-events: none; transition: opacity .35s ease; background: var(--overlay); }
+  #drawerOverlay.open { opacity: 1; pointer-events: auto; }
+
+  .bar { transition: transform .3s ease, opacity .3s ease; transform-origin: center; background: var(--text-heading); }
+  #hamburgerBtn.open .bar1 { transform: translateY(7px) rotate(45deg); }
+  #hamburgerBtn.open .bar2 { opacity: 0; }
+  #hamburgerBtn.open .bar3 { transform: translateY(-7px) rotate(-45deg); }
+
+  /* theme switch knob */
+  #themeToggle { background: var(--bg-elev3); border: 1px solid var(--border); }
+  #themeKnob { transition: transform .25s cubic-bezier(.4,0,.2,1); background: var(--text-heading); }
+  html.light #themeKnob { transform: translateX(20px); }
+  #iconMoon { display: block; }
+  #iconSun { display: none; }
+  html.light #iconMoon { display: none; }
+  html.light #iconSun { display: block; }
+
+  .badge-dot { box-shadow: 0 0 0 3px rgba(255,255,255,0.06); }
+
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; }
+
+  .card-hover { transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+  .card-hover:hover { transform: translateY(-4px); border-color: rgba(109,123,255,0.5); }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-up { animation: fadeUp .5s ease both; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .8s linear infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flap-char, .card-hover, #mobileDrawer, .bar, #themeKnob, .fade-up, .spin { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+
+<body class="antialiased">
+
+<!-- ================= NAVBAR ================= -->
+<header class="fixed top-0 inset-x-0 z-50 backdrop-blur-md" style="background: var(--header-bg); border-bottom: 1px solid var(--border);">
+  <div class="max-w-7xl mx-auto px-5 sm:px-8">
+    <div class="h-16 flex items-center justify-between">
+      <a href="#home" class="flex items-center gap-2 group">
+        <span class="w-2.5 h-2.5 rounded-full bg-signal-emerald shadow-[0_0_12px_2px_rgba(34,224,160,0.6)]"></span>
+        <span class="font-display font-semibold text-lg tracking-tight" style="color: var(--text-heading);">Railkit</span>
+      </a>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium" style="color: var(--text-muted);">
+        <a href="#home" class="hover:opacity-100 transition-opacity" style="color:inherit;" onmouseover="this.style.color='var(--text-heading)'" onmouseout="this.style.color='var(--text-muted)'">Home</a>
+        <a href="#about" onmouseover="this.style.color='var(--text-heading)'" onmouseout="this.style.color='var(--text-muted)'">About</a>
+        <a href="#status" onmouseover="this.style.color='var(--text-heading)'" onmouseout="this.style.color='var(--text-muted)'">Status</a>
+        <a href="#contact" onmouseover="this.style.color='var(--text-heading)'" onmouseout="this.style.color='var(--text-muted)'">Contact</a>
+      </nav>
+
+      <div class="flex items-center gap-2.5 sm:gap-3">
+        <!-- theme toggle -->
+        <button id="themeToggle" aria-label="Toggle dark mode" class="relative w-11 h-6 rounded-full flex items-center px-0.5">
+          <span id="themeKnob" class="w-5 h-5 rounded-full shadow flex items-center justify-center">
+            <svg id="iconMoon" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 14.5A8 8 0 119.5 4a6.5 6.5 0 1010.5 10.5z" fill="#08090c"/></svg>
+            <svg id="iconSun" width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="#ffb545" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="#ffb545" stroke-width="2" stroke-linecap="round"/></svg>
+          </span>
+        </button>
+
+        <a href="#status" class="hidden md:inline-flex items-center gap-1.5 rounded-full bg-signal-indigo/15 text-signal-indigo border border-signal-indigo/30 px-4 py-2 text-sm font-medium hover:bg-signal-indigo/25 transition-colors">
+          Check PNR
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+
+        <button id="hamburgerBtn" class="md:hidden relative w-9 h-9 flex flex-col items-center justify-center gap-[5px]" aria-label="Toggle menu" aria-expanded="false">
+          <span class="bar bar1 block w-6 h-[2px] rounded-full"></span>
+          <span class="bar bar2 block w-6 h-[2px] rounded-full"></span>
+          <span class="bar bar3 block w-6 h-[2px] rounded-full"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="rail-divider opacity-40"></div>
+</header>
+
+<!-- mobile drawer -->
+<div id="drawerOverlay" class="fixed inset-0 z-40 md:hidden"></div>
+<aside id="mobileDrawer" class="fixed top-0 right-0 z-50 h-full w-72 max-w-[80%] md:hidden flex flex-col" style="border-left: 1px solid var(--border);">
+  <div class="h-16 flex items-center justify-between px-5" style="border-bottom: 1px solid var(--border);">
+    <span class="font-display font-semibold" style="color: var(--text-heading);">Menu</span>
+    <button id="drawerClose" aria-label="Close menu" style="color: var(--text-muted);">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <nav class="flex flex-col gap-1 p-5 text-base font-medium">
+    <a href="#home" class="drawer-link px-3 py-3 rounded-lg transition-colors" style="color: var(--text-body);">Home</a>
+    <a href="#about" class="drawer-link px-3 py-3 rounded-lg transition-colors" style="color: var(--text-body);">About</a>
+    <a href="#status" class="drawer-link px-3 py-3 rounded-lg transition-colors" style="color: var(--text-body);">Status</a>
+    <a href="#contact" class="drawer-link px-3 py-3 rounded-lg transition-colors" style="color: var(--text-body);">Contact</a>
+  </nav>
+  <div class="mt-auto p-5 font-mono-board text-xs" style="border-top: 1px solid var(--border); color: var(--text-faint);">v2.0 · live rapidapi feed</div>
+</aside>
+
+<!-- ================= HERO / HOME ================= -->
+<section id="home" class="relative pt-40 pb-20 px-5 sm:px-8 overflow-hidden">
+  <div class="absolute inset-0 -z-10">
+    <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-signal-indigo/10 blur-[140px] rounded-full"></div>
+    <div class="absolute top-40 right-10 w-[300px] h-[300px] bg-signal-emerald/10 blur-[120px] rounded-full"></div>
+  </div>
+
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono-board text-signal-emerald mb-6" style="border: 1px solid var(--border-strong); background: var(--badge-bg);">
+      <span class="w-1.5 h-1.5 rounded-full bg-signal-emerald animate-pulse"></span>
+      LIVE DATA · IRCTC NETWORK
+    </div>
+    <h1 class="font-display font-semibold text-4xl sm:text-6xl leading-[1.05] tracking-tight" style="color: var(--text-heading);">
+      Railway data,<br class="hidden sm:block" /> read like a <span class="text-signal-indigo">departure board.</span>
+    </h1>
+    <p class="mt-6 text-base sm:text-lg max-w-2xl mx-auto" style="color: var(--text-muted);">
+      Railkit turns raw Indian Railways API responses — PNR, live running, fare, station charts — into clean, human-readable status you can actually scan in a second.
+    </p>
+    <div class="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4">
+      <a href="#status" class="w-full sm:w-auto text-center px-6 py-3 rounded-xl bg-signal-indigo text-white font-medium hover:bg-signal-indigo/90 shadow-glow transition-colors">Open Status Dashboard</a>
+      <a href="#about" class="w-full sm:w-auto text-center px-6 py-3 rounded-xl font-medium transition-colors" style="border: 1px solid var(--border-strong); color: var(--text-body);">What is Railkit?</a>
+    </div>
+
+    <!-- ============ SELF-INTRO CARD (auto, fades in) ============ -->
+    <div id="introCard" class="opacity-0 mt-10 max-w-xl mx-auto rounded-2xl p-5 flex items-start gap-4 text-left" style="border: 1px solid var(--border); background: var(--card-bg);">
+      <div class="w-10 h-10 shrink-0 rounded-full bg-signal-indigo flex items-center justify-center font-display font-bold text-white">H</div>
+      <div class="text-sm" style="color: var(--text-body);">
+        <p><span class="font-semibold" style="color: var(--text-heading);">Hey, I'm Railkit 👋</span> — a live playground for Indian Railways data, built by
+          <a href="https://new-profotilo-flame.vercel.app/" target="_blank" rel="noopener" class="text-signal-indigo font-medium hover:underline">Harsh Upadhyay</a>.
+        </p>
+        <p class="mt-1" style="color: var(--text-muted);">Pick a service in the Status Dashboard below and try it with real data — no sign-up needed.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail-divider mt-16 max-w-5xl mx-auto rounded-full"></div>
+</section>
+
+<!-- ================= ABOUT ================= -->
+<section id="about" class="py-24 px-5 sm:px-8">
+  <div class="max-w-6xl mx-auto">
+    <div class="max-w-2xl mb-14">
+      <span class="font-mono-board text-xs text-signal-emerald tracking-widest">ABOUT RAILKIT</span>
+      <h2 class="font-display font-semibold text-3xl sm:text-4xl mt-3" style="color: var(--text-heading);">Modern tooling for a very old network.</h2>
+      <p class="mt-4 leading-relaxed" style="color: var(--text-muted);">
+        Indian Railways moves more people every day than most countries have citizens, but the data around it — PNR status, live running, fares, station charts — usually comes back as dense, unreadable JSON. Railkit is a lightweight utility layer that fetches that data and renders it the way a human actually wants to read it: clear labels, color-coded status, and zero guesswork.
+      </p>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="card-hover service-card cursor-pointer rounded-2xl p-6" data-jump="pnr" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-indigo/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-indigo"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">PNR Status</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Instant, readable confirmation status for any 10-digit PNR.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-emerald/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-emerald"><path d="M3 12h4l2-7 4 14 2-7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Live Running</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Track a train's real-time position and delay, straight from source.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-amber/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-amber"><path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Fare Lookup</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Class-wise fares between any two stations, quota included.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-indigo/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-indigo"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Station Board</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Look up any station code for name, zone and basic details.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-emerald/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-emerald"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Train Info</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Full schedule and metadata for any train number.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-amber/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-amber"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Train Search</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Find trains running between any two stations.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-indigo/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-indigo"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10h.01M12 10h.01M16 10h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Seat Availability</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Availability by class and quota for any journey.</p>
+      </div>
+      <div class="card-hover rounded-2xl p-6" style="border: 1px solid var(--border); background: var(--card-bg);">
+        <div class="w-10 h-10 rounded-lg bg-signal-emerald/15 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-signal-emerald"><path d="M12 8v4l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+        </div>
+        <h3 class="font-display font-medium" style="color: var(--text-heading);">Journey History</h3>
+        <p class="mt-2 text-sm leading-relaxed" style="color: var(--text-muted);">Past-run data for a train on a given date.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STATUS / PLAYGROUND ================= -->
+<section id="status" class="py-24 px-5 sm:px-8" style="background: var(--section-tint); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="max-w-6xl mx-auto">
+    <div class="mb-10">
+      <span class="font-mono-board text-xs text-signal-emerald tracking-widest">STATUS DASHBOARD</span>
+      <h2 class="font-display font-semibold text-3xl sm:text-4xl mt-3" style="color: var(--text-heading);">Try every service, live</h2>
+      <p class="mt-2 text-sm" style="color: var(--text-muted);">Same clean form, same clean output — no raw JSON in sight.</p>
+    </div>
+
+    <!-- TABS -->
+    <div class="rounded-2xl overflow-hidden" style="border: 1px solid var(--border); background: var(--card-bg-strong);">
+      <div id="tabs" role="tablist" class="flex overflow-x-auto gap-1 px-2.5 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"></div>
+
+      <!-- PNR -->
+      <div class="panel p-5 sm:p-6" data-panel="pnr" style="background: var(--bg-elev1);">
+        <label for="pnrInput" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">10-digit PNR number</label>
+        <div class="flex gap-2 mb-1">
+          <input id="pnrInput" type="text" maxlength="10" placeholder="e.g. 8148735219" class="flex-1 min-w-0 rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          <button data-action="pnr" data-endpoint="/api/pnr/{0}" data-fields="pnrInput" class="tool-btn shrink-0 px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Check</button>
+        </div>
+        <div data-status="pnr" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="pnr" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Train Info -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="train" style="background: var(--bg-elev1);">
+        <label for="trainInput" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">5-digit train number</label>
+        <div class="flex gap-2 mb-1">
+          <input id="trainInput" type="text" maxlength="5" placeholder="e.g. 12124" class="flex-1 min-w-0 rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          <button data-action="train" data-endpoint="/api/train/{0}" data-fields="trainInput" class="tool-btn shrink-0 px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Lookup</button>
+        </div>
+        <div data-status="train" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="train" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Live Tracking -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="track" style="background: var(--bg-elev1);">
+        <label for="liveInput" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">5-digit train number</label>
+        <div class="flex gap-2 mb-1">
+          <input id="liveInput" type="text" maxlength="5" placeholder="e.g. 12124" class="flex-1 min-w-0 rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          <button data-action="track" data-endpoint="/api/live-train/{0}" data-fields="liveInput" class="tool-btn shrink-0 px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Track</button>
+        </div>
+        <div data-status="track" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="track" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Journey History (coming soon) -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="history" style="background: var(--bg-elev1);">
+        <div class="flex flex-wrap gap-3 mb-1">
+          <div class="flex-1 min-w-[140px]">
+            <label for="historyTrain" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Train number</label>
+            <input id="historyTrain" type="text" maxlength="5" placeholder="e.g. 12124" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div class="flex-1 min-w-[140px]">
+            <label for="historyDate" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Journey date</label>
+            <input id="historyDate" type="date" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+        </div>
+        <div class="mt-2">
+          <button data-action="history" data-coming-soon="true" class="tool-btn px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Get history</button>
+        </div>
+        <div data-status="history" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="history" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Station Board -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="station" style="background: var(--bg-elev1);">
+        <label for="stationInput" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Station code</label>
+        <div class="flex gap-2 mb-1">
+          <input id="stationInput" type="text" maxlength="6" placeholder="e.g. NDLS" class="flex-1 min-w-0 rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          <button data-action="station" data-endpoint="/api/station/{0}" data-fields="stationInput" class="tool-btn shrink-0 px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Lookup</button>
+        </div>
+        <div data-status="station" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="station" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Train Search (coming soon) -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="search" style="background: var(--bg-elev1);">
+        <div class="flex flex-wrap gap-3 mb-1">
+          <div class="flex-1 min-w-[140px]">
+            <label for="searchFrom" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">From station</label>
+            <input id="searchFrom" type="text" maxlength="6" placeholder="NDLS" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div class="flex-1 min-w-[140px]">
+            <label for="searchTo" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">To station</label>
+            <input id="searchTo" type="text" maxlength="6" placeholder="KYN" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+        </div>
+        <div class="mt-2">
+          <button data-action="search" data-coming-soon="true" class="tool-btn px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Find trains</button>
+        </div>
+        <div data-status="search" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="search" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Seat Availability (coming soon) -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="seat" style="background: var(--bg-elev1);">
+        <div class="flex flex-wrap gap-3 mb-1">
+          <div class="flex-1 min-w-[120px]">
+            <label for="seatTrain" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Train no.</label>
+            <input id="seatTrain" type="text" maxlength="5" placeholder="12124" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div class="flex-1 min-w-[120px]">
+            <label for="seatFrom" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">From</label>
+            <input id="seatFrom" type="text" maxlength="6" placeholder="NDLS" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div class="flex-1 min-w-[120px]">
+            <label for="seatTo" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">To</label>
+            <input id="seatTo" type="text" maxlength="6" placeholder="KYN" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div class="flex-1 min-w-[100px]">
+            <label for="seatClass" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Class</label>
+            <input id="seatClass" type="text" maxlength="4" placeholder="3A" class="w-full rounded-xl px-4 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+        </div>
+        <div class="mt-2">
+          <button data-action="seat" data-coming-soon="true" class="tool-btn px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Check availability</button>
+        </div>
+        <div data-status="seat" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="seat" class="mt-3 hidden"></div>
+      </div>
+
+      <!-- Fare -->
+      <div class="panel p-5 sm:p-6 hidden" data-panel="fare" style="background: var(--bg-elev1);">
+        <div class="grid sm:grid-cols-5 gap-2 mb-1">
+          <div>
+            <label for="fareFrom" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">From</label>
+            <input id="fareFrom" type="text" placeholder="NDLS" class="w-full rounded-xl px-3 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div>
+            <label for="fareTo" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">To</label>
+            <input id="fareTo" type="text" placeholder="KYN" class="w-full rounded-xl px-3 py-2.5 font-mono-board text-sm uppercase focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+          </div>
+          <div>
+            <label for="fareClass" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Class</label>
+            <select id="fareClass" class="w-full rounded-xl px-3 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);">
+              <option value="3A">3A</option><option value="2A">2A</option><option value="1A">1A</option><option value="SL">SL</option><option value="CC">CC</option>
+            </select>
+          </div>
+          <div>
+            <label for="fareQuota" class="text-xs font-medium block mb-1.5" style="color: var(--text-muted);">Quota</label>
+            <select id="fareQuota" class="w-full rounded-xl px-3 py-2.5 font-mono-board text-sm focus:outline-none" style="background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-heading);">
+              <option value="GN">General</option><option value="TQ">Tatkal</option><option value="LD">Ladies</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <button data-action="fare" data-endpoint="/api/fare" data-fields="fareFrom,fareTo,fareClass,fareQuota" class="tool-btn w-full px-4 py-2.5 rounded-xl bg-signal-indigo text-white text-sm font-medium hover:bg-signal-indigo/90 disabled:opacity-60">Get Fare</button>
+          </div>
+        </div>
+        <div data-status="fare" class="text-xs font-mono-board mt-2 min-h-[1rem]" style="color: var(--text-faint);"></div>
+        <div data-result="fare" class="mt-3 hidden"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONTACT ================= -->
+<section id="contact" class="py-24 px-5 sm:px-8">
+  <div class="max-w-3xl mx-auto text-center">
+    <span class="font-mono-board text-xs text-signal-emerald tracking-widest">CONTACT</span>
+    <h2 class="font-display font-semibold text-3xl sm:text-4xl mt-3" style="color: var(--text-heading);">Questions, bugs, ideas?</h2>
+    <p class="mt-4" style="color: var(--text-muted);">Reach out and we'll get back to you — usually faster than a delayed train.</p>
+
+    <form id="contactForm" class="mt-10 grid sm:grid-cols-2 gap-4 text-left">
+      <div class="sm:col-span-1">
+        <label class="text-xs font-mono-board" style="color: var(--text-faint);">Name</label>
+        <input type="text" required class="mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none" style="background: var(--bg-elev1); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+      </div>
+      <div class="sm:col-span-1">
+        <label class="text-xs font-mono-board" style="color: var(--text-faint);">Email</label>
+        <input type="email" required class="mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none" style="background: var(--bg-elev1); border: 1px solid var(--border-strong); color: var(--text-heading);" />
+      </div>
+      <div class="sm:col-span-2">
+        <label class="text-xs font-mono-board" style="color: var(--text-faint);">Message</label>
+        <textarea rows="4" required class="mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none" style="background: var(--bg-elev1); border: 1px solid var(--border-strong); color: var(--text-heading);"></textarea>
+      </div>
+      <div class="sm:col-span-2">
+        <button type="submit" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-signal-indigo text-white font-medium hover:bg-signal-indigo/90 transition-colors">Send Message</button>
+        <span id="contactMsg" class="ml-3 text-sm text-signal-emerald"></span>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer class="py-10 px-5 sm:px-8" style="border-top: 1px solid var(--border);">
+  <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-center sm:text-left" style="color: var(--text-faint);">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-signal-emerald"></span>
+      <span class="font-mono-board">Railkit © 2026</span>
+    </div>
+    <div class="font-mono-board text-xs">
+      Made by <a href="https://new-profotilo-flame.vercel.app/" target="_blank" rel="noopener" class="text-signal-indigo font-semibold hover:underline">Harsh Upadhyay</a>
+      &nbsp;·&nbsp; ॐ नमः शिवाय
+    </div>
+  </div>
+</footer>
+
+<script>
+// ============================================================
+// THEME (dark default, light optional — persisted)
+// ============================================================
+const root = document.documentElement;
+function applyTheme(theme) {
+  root.classList.toggle('light', theme === 'light');
+  localStorage.setItem('railkit-theme', theme);
+}
+(function initTheme() {
+  const saved = localStorage.getItem('railkit-theme');
+  applyTheme(saved || 'dark');
+})();
+document.getElementById('themeToggle').addEventListener('click', () => {
+  applyTheme(root.classList.contains('light') ? 'dark' : 'light');
+});
+
+// ============================================================
+// MOBILE HAMBURGER DRAWER
+// ============================================================
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const mobileDrawer = document.getElementById('mobileDrawer');
+const drawerOverlay = document.getElementById('drawerOverlay');
+const drawerClose = document.getElementById('drawerClose');
+function openDrawer() {
+  mobileDrawer.classList.add('open');
+  drawerOverlay.classList.add('open');
+  hamburgerBtn.classList.add('open');
+  hamburgerBtn.setAttribute('aria-expanded', 'true');
+  document.body.style.overflow = 'hidden';
+}
+function closeDrawer() {
+  mobileDrawer.classList.remove('open');
+  drawerOverlay.classList.remove('open');
+  hamburgerBtn.classList.remove('open');
+  hamburgerBtn.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+}
+hamburgerBtn.addEventListener('click', () => mobileDrawer.classList.contains('open') ? closeDrawer() : openDrawer());
+drawerClose.addEventListener('click', closeDrawer);
+drawerOverlay.addEventListener('click', closeDrawer);
+document.querySelectorAll('.drawer-link').forEach(link => link.addEventListener('click', closeDrawer));
+
+// ============================================================
+// SELF-INTRO CARD
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const card = document.getElementById('introCard');
+    card.classList.remove('opacity-0');
+    card.classList.add('fade-up');
+  }, 400);
+});
+
+// ============================================================
+// TABS
+// ============================================================
+const TAB_DEFS = [
+  { id: 'pnr',     label: 'PNR Status' },
+  { id: 'train',   label: 'Train Info' },
+  { id: 'track',   label: 'Live Tracking' },
+  { id: 'history', label: 'Journey History' },
+  { id: 'station', label: 'Station Board' },
+  { id: 'search',  label: 'Train Search' },
+  { id: 'seat',    label: 'Seat Availability' },
+  { id: 'fare',    label: 'Fare Lookup' },
+];
+const tabsBar = document.getElementById('tabs');
+tabsBar.innerHTML = TAB_DEFS.map((t, i) => `
+  <button class="tab whitespace-nowrap font-medium text-[0.83rem] px-3.5 py-2.5 rounded-t-lg border-none bg-transparent" data-tab="${t.id}">${t.label}</button>
+`).join('');
+
+function styleTab(btn, active) {
+  btn.style.color = active ? '#6d7bff' : 'var(--text-muted)';
+  btn.style.background = active ? 'var(--bg-elev1)' : 'transparent';
+}
+function activateTab(tabId) {
+  document.querySelectorAll('.tab').forEach(btn => styleTab(btn, btn.dataset.tab === tabId));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tabId));
+}
+tabsBar.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (btn) activateTab(btn.dataset.tab);
+});
+document.querySelectorAll('.service-card[data-jump]').forEach(card => {
+  card.addEventListener('click', () => {
+    activateTab(card.dataset.jump);
+    document.getElementById('status').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+activateTab('pnr'); // initial state
+
+// ============================================================
+// JSON -> READABLE TEXT RENDERER
+// ============================================================
+function prettyLabel(key) {
+  return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, c => c.toUpperCase());
+}
+function renderReadable(container, data) {
+  container.innerHTML = '';
+  const rows = [];
+  function walk(obj, prefix = '') {
+    if (Array.isArray(obj)) {
+      obj.forEach((v, i) => v && typeof v === 'object' ? walk(v, `${prefix}[${i}] `) : rows.push([`${prefix}${i + 1}`, String(v)]));
+    } else if (obj && typeof obj === 'object') {
+      Object.entries(obj).forEach(([k, v]) => v && typeof v === 'object' ? walk(v, `${prefix}${prettyLabel(k)} `) : rows.push([`${prefix}${prettyLabel(k)}`, v === null || v === '' ? '—' : String(v)]));
+    }
+  }
+  walk(data);
+  if (rows.length === 0) {
+    container.innerHTML = `<p class="text-sm" style="color:var(--text-faint);">No data returned.</p>`;
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'rounded-xl overflow-hidden';
+  box.style.border = '1px solid var(--border)';
+  box.style.background = 'var(--section-tint)';
+  rows.slice(0, 40).forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-start justify-between gap-4 px-4 py-2.5 text-sm';
+    row.style.borderBottom = '1px solid var(--border)';
+    row.innerHTML = `<span style="color:var(--text-faint);">${label}</span><span class="font-mono-board text-right break-words" style="color:var(--text-heading);">${value}</span>`;
+    box.appendChild(row);
+  });
+  box.lastChild.style.borderBottom = 'none';
+  container.appendChild(box);
+}
+function renderError(container, message) {
+  container.innerHTML = `<div class="rounded-xl border border-signal-red/30 bg-signal-red/5 px-4 py-3 text-sm text-signal-red">${message}</div>`;
+}
+
+// ============================================================
+// LIVE API CALLS (via this site's own /api/* proxy — no key in the browser)
+// ============================================================
+async function callLiveEndpoint(btn) {
+  const action = btn.dataset.action;
+  const statusEl = document.querySelector(`[data-status="${action}"]`);
+  const resultEl = document.querySelector(`[data-result="${action}"]`);
+  resultEl.classList.remove('hidden');
+
+  if (btn.dataset.comingSoon) {
+    statusEl.textContent = '';
+    renderError(resultEl, "This service isn't connected to a live endpoint yet — coming soon.");
+    return;
+  }
+
+  const fieldIds = (btn.dataset.fields || '').split(',').filter(Boolean);
+  const values = fieldIds.map(id => document.getElementById(id)?.value.trim());
+
+  let url;
+  if (action === 'fare') {
+    const [from, to, cls, quota] = values;
+    if (!from || !to) return renderError(resultEl, 'Enter both From and To station codes.');
+    const qs = new URLSearchParams({ adults: 1, children: 0, from: from.toUpperCase(), to: to.toUpperCase(), class: cls, quota }).toString();
+    url = `/api/fare?${qs}`;
+  } else {
+    const value = values[0];
+    if (!value) return renderError(resultEl, 'Please fill in the required field.');
+    url = btn.dataset.endpoint.replace('{0}', encodeURIComponent(value.toUpperCase()));
+  }
+
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<svg class="spin inline-block align-[-2px]" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg> Loading…`;
+  statusEl.textContent = '';
+  statusEl.style.color = 'var(--text-faint)';
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Request failed');
+    statusEl.textContent = `Updated · ${new Date().toLocaleTimeString()}`;
+    statusEl.style.color = '#22e0a0';
+    renderReadable(resultEl, data);
+  } catch (err) {
+    statusEl.textContent = 'Error';
+    statusEl.style.color = '#ff5c72';
+    renderError(resultEl, err.message || 'Something went wrong. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
+}
+document.querySelectorAll('.tool-btn').forEach(btn => btn.addEventListener('click', () => callLiveEndpoint(btn)));
+
+// ============================================================
+// CONTACT FORM (front-end placeholder)
+// ============================================================
+const contactForm = document.getElementById('contactForm');
+if (contactForm) {
+  contactForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('contactMsg').textContent = 'Message sent — thanks!';
+    contactForm.reset();
+  });
+}
+</script>
+</body>
+</html>
