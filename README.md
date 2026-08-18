@@ -131,8 +131,9 @@ This is an **educational project** built to practice API integration, Express.js
 
 <div align="center">
 
-### 👨‍💻 Author
+### 👨‍💻 ### 👨‍💻 Author
 
-**Harsh** — [Portfolio](https://new-profotilo-flame.vercel.app/)
+Built with ❤️ by **[Harsh](https://new-profotilo-flame.vercel.app/)**
+
 
 </div>
